@@ -1,6 +1,7 @@
 // author: https://gist.github.com/mbant/67875e0464cd9d1402413532e3244261
 
 #include <array>
+#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +33,9 @@ struct Sequence {
   bool operator<(const Sequence& rhs) const { return score < rhs.score; }
 };
 
+using SeqVector = std::vector<Sequence>;
+using SeqPQ = std::priority_queue<Sequence>;
+
 Sequence greedy_decoding(char start, int length) {
   Sequence seq;
   auto& s = seq.str;
@@ -52,6 +56,55 @@ Sequence greedy_decoding(char start, int length) {
     seq.score += max_score;
   }
   return seq;
+}
+
+void expand_next_seqs(const Sequence& best_seq, SeqPQ& next_seqs, int branching_size) {
+  SeqPQ next_possible_seqs;
+
+  for (const auto& ch : kVocab) {
+    std::string cur_str = best_seq.str + ch;
+    double cur_score = best_seq.score + lm(best_seq.str.back(), ch);
+    next_possible_seqs.emplace(cur_str, cur_score);
+  }
+
+  for (int i = 0; i < branching_size and not next_possible_seqs.empty(); ++i, next_possible_seqs.pop()) {
+    next_seqs.push(next_possible_seqs.top());
+  }
+}
+
+void expand_all_next_seqs(const SeqVector& best_seqs, SeqPQ& next_seqs, int branching_size) {
+  for (const auto& best_seq : best_seqs) {
+    expand_next_seqs(best_seq, next_seqs, branching_size);
+  }
+}
+
+void update_best_seqs(SeqPQ& next_seqs, SeqVector& best_seqs, int beam_size) {
+  best_seqs.clear();
+  best_seqs.reserve(beam_size);
+  for (int i = 0; i < beam_size and not next_seqs.empty(); ++i, next_seqs.pop()) {
+    best_seqs.push_back(next_seqs.top());
+  }
+}
+
+Sequence beam_decoding(char start, int length, int beam_size) {
+  SeqVector best_seqs(1);
+  best_seqs[0].str[0] = start;
+
+  for (int i = 1; i < length; ++i) {
+    SeqPQ next_seqs;
+    expand_all_next_seqs(best_seqs, next_seqs, beam_size);
+    update_best_seqs(next_seqs, best_seqs, beam_size);
+  }
+
+  double max_score = best_seqs[0].score;
+  int selected = 0;
+  for (int i = 1, sz = best_seqs.size(); i < sz; ++i) {
+    if (best_seqs[i].score > max_score) {
+      selected = i;
+      max_score = best_seqs[i].score;
+    }
+  }
+  return best_seqs[selected];
 }
 
 int main() {
