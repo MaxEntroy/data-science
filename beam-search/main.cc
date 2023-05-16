@@ -6,10 +6,10 @@
 #include <utility>
 #include <vector>
 
-constexpr std::array<char, 26> kVocab{'a','b','c','d','e','f','g',
-                                      'h','i','j','k','l','m','n',
-                                      'o','p','q','r','s','t',
-                                      'u','v','w','x','y','z'};
+constexpr std::array<char, 26> docs{'a','b','c','d','e','f','g',
+                                    'h','i','j','k','l','m','n',
+                                    'o','p','q','r','s','t',
+                                    'u','v','w','x','y','z'};
 
 std::vector<std::vector<double>> log_p_language_model;
 double lm(char cur, char next) {
@@ -31,10 +31,10 @@ class Rule {
 };
 
 struct Sequence {
-  std::vector<int> seq;
+  std::vector<int> selected;
   double score;
   Sequence() : score(0.0) {}
-  Sequence(const std::vector<int>& s, double score_in) : seq(s), score(score_in) {}
+  Sequence(const std::vector<int>& selected_in, double score_in) : selected(selected_in), score(score_in) {}
 
   bool operator<(const Sequence& rhs) const { return score < rhs.score; }
 };
@@ -44,55 +44,70 @@ using SeqPQ = std::priority_queue<Sequence>;
 
 Sequence greedy_decoding(char start, int length) {
   Sequence seq;
-  auto& s = seq.seq;
-  s.reserve(length);
-  s.push_back(start);
+  auto& selected = seq.selected;
+  selected.reserve(length);
+  selected.push_back(start);
 
   char chosen = '\0';
   double max_score = 0.0;
   for (int i = 1; i < length; ++i) {
-    for (const auto& ch : kVocab) {
-      double tmp_score = lm(s.back(), ch);
+    for (const auto& ch : docs) {
+      double tmp_score = lm(selected.back(), ch);
       if (tmp_score > max_score) {
         max_score = tmp_score;
         chosen = ch;
       }
     }
-    s.push_back(chosen);
+    selected.push_back(chosen);
     seq.score += max_score;
   }
   return seq;
 }
 
-void expand_next_seqs(const Sequence& best_seq, SeqPQ& next_seqs, int branching_size) {
-  SeqPQ next_possible_seqs;
+void expand_next_seqs(const Sequence& best_seq, int expand_size, int beam_size,
+                      SeqPQ& next_seqs, std::vector<Rule>& rules) {
+  int pos = best_seq.selected.size();
+  SeqPQ expand_seqs;
 
-  for (const auto& ch : kVocab) {
-    std::vector<int> candidate_seq = best_seq.seq;
-    candidate_seq.push_back(ch);
-    double cur_score = best_seq.score + lm(best_seq.seq.back(), ch);
-    next_possible_seqs.emplace(candidate_seq, cur_score);
+  for (const auto& doc : docs) {
+    bool found = true;
+    for (auto& rule : rules) {
+      if (not rule.Match(pos, doc)) {
+        found = false;
+        break;
+      }
+    }
+    if (not found) continue;
+
+    auto expand_seq = best_seq.selected;
+    expand_seq.push_back(doc);
+    double cur_score = best_seq.score + lm(best_seq.selected.back(), doc);
+    expand_seqs.emplace(expand_seq, cur_score);
+
+    if (expand_seqs.size() == expand_size) break;
   }
 
-  for (int i = 0; i < branching_size and not next_possible_seqs.empty(); ++i, next_possible_seqs.pop()) {
-    next_seqs.push(next_possible_seqs.top());
+
+  for (int i = 0; i < beam_size and not expand_seqs.empty(); ++i, expand_seqs.pop()) {
+    next_seqs.push(expand_seqs.top());
   }
 }
 
-//void expand_all_next_seqs(const SeqVec& best_seqs, SeqPQ& next_seqs, int branching_size) {
-//  for (const auto& best_seq : best_seqs) {
-//    expand_next_seqs(best_seq, next_seqs, branching_size);
-//  }
-//}
-//
-//void update_best_seqs(SeqPQ& next_seqs, SeqVec& best_seqs, int beam_size) {
-//  best_seqs.clear();
-//  best_seqs.reserve(beam_size);
-//  for (int i = 0; i < beam_size and not next_seqs.empty(); ++i, next_seqs.pop()) {
-//    best_seqs.push_back(next_seqs.top());
-//  }
-//}
-//
+void expand_all_next_seqs(const SeqVec& best_seqs, int expand_size, int beam_size,
+                          SeqPQ& next_seqs, std::vector<Rule>& rules) {
+  for (const auto& best_seq : best_seqs) {
+    expand_next_seqs(best_seq, expand_size, beam_size, next_seqs, rules);
+  }
+}
+
+void update_best_seqs(SeqPQ& next_seqs, SeqVec& best_seqs, int beam_size) {
+  best_seqs.clear();
+  best_seqs.reserve(beam_size);
+  for (int i = 0; i < beam_size and not next_seqs.empty(); ++i, next_seqs.pop()) {
+    best_seqs.push_back(next_seqs.top());
+  }
+}
+
 //Sequence beam_decoding(char start, int length, int beam_size) {
 //  SeqVec best_seqs(1);
 //  best_seqs[0].str[0] = start;
