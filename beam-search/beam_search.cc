@@ -24,27 +24,21 @@ double lm(char cur, char next) {
 
 // we can do it greedily (not optimal but easier to code)
 
-class Rule {
- public:
-  bool Match(int pos, int doc) { return true; }
-  void Update(int pos, int doc) {}
-};
-
 struct Sequence {
-  std::vector<int> seq;
+  std::string str;
   double score;
   Sequence() : score(0.0) {}
-  Sequence(const std::vector<int>& s, double score_in) : seq(s), score(score_in) {}
+  Sequence(const std::string& s, double score_in) : str(s), score(score_in) {}
 
   bool operator<(const Sequence& rhs) const { return score < rhs.score; }
 };
 
-using SeqVec = std::vector<Sequence>;
+using SeqVector = std::vector<Sequence>;
 using SeqPQ = std::priority_queue<Sequence>;
 
 Sequence greedy_decoding(char start, int length) {
   Sequence seq;
-  auto& s = seq.seq;
+  auto& s = seq.str;
   s.reserve(length);
   s.push_back(start);
 
@@ -68,10 +62,9 @@ void expand_next_seqs(const Sequence& best_seq, SeqPQ& next_seqs, int branching_
   SeqPQ next_possible_seqs;
 
   for (const auto& ch : kVocab) {
-    std::vector<int> candidate_seq = best_seq.seq;
-    candidate_seq.push_back(ch);
-    double cur_score = best_seq.score + lm(best_seq.seq.back(), ch);
-    next_possible_seqs.emplace(candidate_seq, cur_score);
+    std::string cur_str = best_seq.str + ch;
+    double cur_score = best_seq.score + lm(best_seq.str.back(), ch);
+    next_possible_seqs.emplace(cur_str, cur_score);
   }
 
   for (int i = 0; i < branching_size and not next_possible_seqs.empty(); ++i, next_possible_seqs.pop()) {
@@ -79,40 +72,40 @@ void expand_next_seqs(const Sequence& best_seq, SeqPQ& next_seqs, int branching_
   }
 }
 
-//void expand_all_next_seqs(const SeqVec& best_seqs, SeqPQ& next_seqs, int branching_size) {
-//  for (const auto& best_seq : best_seqs) {
-//    expand_next_seqs(best_seq, next_seqs, branching_size);
-//  }
-//}
-//
-//void update_best_seqs(SeqPQ& next_seqs, SeqVec& best_seqs, int beam_size) {
-//  best_seqs.clear();
-//  best_seqs.reserve(beam_size);
-//  for (int i = 0; i < beam_size and not next_seqs.empty(); ++i, next_seqs.pop()) {
-//    best_seqs.push_back(next_seqs.top());
-//  }
-//}
-//
-//Sequence beam_decoding(char start, int length, int beam_size) {
-//  SeqVec best_seqs(1);
-//  best_seqs[0].str[0] = start;
-//
-//  for (int i = 1; i < length; ++i) {
-//    SeqPQ next_seqs;
-//    expand_all_next_seqs(best_seqs, next_seqs, beam_size);
-//    update_best_seqs(next_seqs, best_seqs, beam_size);
-//  }
-//
-//  double max_score = best_seqs[0].score;
-//  int selected = 0;
-//  for (int i = 1, sz = best_seqs.size(); i < sz; ++i) {
-//    if (best_seqs[i].score > max_score) {
-//      selected = i;
-//      max_score = best_seqs[i].score;
-//    }
-//  }
-//  return best_seqs[selected];
-//}
+void expand_all_next_seqs(const SeqVector& best_seqs, SeqPQ& next_seqs, int branching_size) {
+  for (const auto& best_seq : best_seqs) {
+    expand_next_seqs(best_seq, next_seqs, branching_size);
+  }
+}
+
+void update_best_seqs(SeqPQ& next_seqs, SeqVector& best_seqs, int beam_size) {
+  best_seqs.clear();
+  best_seqs.reserve(beam_size);
+  for (int i = 0; i < beam_size and not next_seqs.empty(); ++i, next_seqs.pop()) {
+    best_seqs.push_back(next_seqs.top());
+  }
+}
+
+Sequence beam_decoding(char start, int length, int beam_size) {
+  SeqVector best_seqs(1);
+  best_seqs[0].str[0] = start;
+
+  for (int i = 1; i < length; ++i) {
+    SeqPQ next_seqs;
+    expand_all_next_seqs(best_seqs, next_seqs, beam_size);
+    update_best_seqs(next_seqs, best_seqs, beam_size);
+  }
+
+  double max_score = best_seqs[0].score;
+  int selected = 0;
+  for (int i = 1, sz = best_seqs.size(); i < sz; ++i) {
+    if (best_seqs[i].score > max_score) {
+      selected = i;
+      max_score = best_seqs[i].score;
+    }
+  }
+  return best_seqs[selected];
+}
 
 int main() {
   return 0;
